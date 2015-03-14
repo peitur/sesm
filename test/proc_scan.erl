@@ -5,7 +5,7 @@
 main( Args ) ->
 	case get_pricesslist( ?PROC ) of
 		{ok, ProcList } ->
-			
+
 			lists:foreach( fun(E) -> io:format( "Process: ~p ~n", [ proc_stat( ?PROC++"/"++E++"/stat" ) ] ) end, ProcList );
 		{error, Reason } ->
 			error_list:error_msg( "[~p] ERROR Error loading process list : ~p ~n" , [?MODULE, Reason] )
@@ -21,7 +21,7 @@ filter_process( [Item|List], Search, Ret ) ->
 	Name = proplists:get_value( name, Item, undefined ),
 	case is_same( Name, Search ) of
 		true ->
-			filter_process( List, Search, [Item|Ret] ).
+			filter_process( List, Search, [Item|Ret] );
 		false ->
 			filter_process( List, Search, Ret )
 	end.

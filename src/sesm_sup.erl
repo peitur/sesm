@@ -34,8 +34,11 @@ start( Opt ) ->
 init( _ ) ->
     Service = {'sesm_service',{'sesm_service',start_link, []},
 	      permanent,2000,worker,['sesm_service']},
-	      
-	Children = [ Service ],
+
+    MonitorSup = {'sesm_monitor_sup',{'sesm_monitor_sup',start_link, []},
+	      permanent,2000,supervisor,['sesm_monitor_sup']},	
+
+	Children = [ Service, MonitorSup ],
     {ok,{{one_for_all,0,1}, Children }}.
 
 %% ====================================================================
