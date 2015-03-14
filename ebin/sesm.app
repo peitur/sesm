@@ -3,7 +3,8 @@
   {vsn, "0.0.1"},
   {modules, [
 	sesm,
-	sesm_supa,
+	sesm_sup,
+	sesm_service,
 	sesm_app,
 	sesm_util
 	]},
