@@ -6,6 +6,9 @@
 %% API functions
 %% ====================================================================
 -export( [start_link/1, stop/0, stop/1] ).
+-export( [add_service/2, remove_service/2, modify_config/2] ).
+-export( [get_processes/0, get_processes/1] ).
+
 
 %% ====================================================================
 %% Behavioural functions 
@@ -20,6 +23,31 @@ stop( ) ->
 
 stop( Reason ) ->
 	gen_server:call( ?MODULE, {stop, Reason }).
+
+
+
+
+
+add_service( Name, Options ) ->
+	gen_server:call( ?MODULE, {add_service, Name, Options} ).
+
+remove_service( Name, Options ) ->
+	gen_server:call( ?MODULE, {remove_service, Name, Options} ).
+
+modify_config( Name, Options ) ->
+	gen_server:call( ?MODULE, {modify_config, Name, Options} ). 
+
+
+
+
+
+get_processes() ->
+	get_processes( all ).
+
+get_processes( Filter ) ->
+	gen_server:call( ?MODULE, {get_processes, Filter} ). 
+
+
 
 %% init/1
 %% ====================================================================
