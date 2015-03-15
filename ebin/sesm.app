@@ -12,5 +12,5 @@
 	]},
   {registered, []},
   {applications, [kernel, stdlib, sasl]},
-  {mod, {sesm,[]}}
+  {mod, {sesm_app,[]}}
  ]}.

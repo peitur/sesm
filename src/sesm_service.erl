@@ -5,7 +5,7 @@
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export( [start_link/1, stop/0, stop/1] ).
+-export( [start_link/0, start_link/1, stop/0, stop/1] ).
 -export( [add_service/2, remove_service/2, modify_config/2] ).
 -export( [get_processes/0, get_processes/1] ).
 
@@ -14,6 +14,9 @@
 %% Behavioural functions 
 %% ====================================================================
 -record(state, { monior_map }).
+
+start_link() ->
+	start_link( [] ).
 
 start_link( Options ) ->
 	gen_server:start_link( {local, ?MODULE}, ?MODULE, Options, [] ).
@@ -61,7 +64,11 @@ get_processes( Filter ) ->
 	State :: term(),
 	Timeout :: non_neg_integer() | infinity.
 %% ====================================================================
-init([]) ->
+init( Options ) ->
+	erlang:process_flag( trap_exit, true ),
+
+	Config = application:get_key( sesm ), 
+
     {ok, #state{}}.
 
 

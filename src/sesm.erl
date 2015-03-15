@@ -4,7 +4,10 @@
 
 
 start() ->
-	application:start( sesm ).
+	io:format("Starting monitor srvice... ~n"),
+	application:start( sasl ),
+	application:start( sesm ),
+	ok.
 
 stop() ->
 	application:stop( sesm ).

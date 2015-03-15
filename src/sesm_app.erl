@@ -21,10 +21,11 @@
 	| {error, Reason :: term()}.
 %% ====================================================================
 start(Type, StartArgs) ->
-    case sesm_sup:start_link(StartArgs) of
+    case sesm_sup:start_link( StartArgs ) of
 		{ok, Pid} ->
 			{ok, Pid};
 		Error ->
+			error_logger:error_msg("[~p] ERROR: Could not start main supervisor : ~p ~n", [?MODULE, Error] ),
 			Error
     end.
 

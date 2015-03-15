@@ -5,9 +5,12 @@
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export( [start/1] ).
+-export( [start_link/0, start_link/1] ).
 
-start( Opt ) ->
+start_link() ->
+	start_link( [] ).
+
+start_link( Opt ) ->
 	supervisor:start_link( {local, ?MODULE}, ?MODULE, Opt ).
 
 %% ====================================================================
