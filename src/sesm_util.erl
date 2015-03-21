@@ -32,7 +32,6 @@ filter_process( [Item|List], Type, Search, Ret ) ->
 			filter_process( List, Type, Search, Ret )
 	end.
 
-
 is_same( Str, Str ) -> true;
 is_same( _Str1, _Str2 ) -> false.
 
