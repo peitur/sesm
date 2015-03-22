@@ -9,11 +9,12 @@
 -export( [add_service/2, remove_service/2, modify_config/2] ).
 -export( [get_processes/0, get_processes/1] ).
 
+-include("../include/sesm.hrl").
 
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
--record(state, { monior_map }).
+-record(state, { monior_map, service_config }).
 
 start_link() ->
 	start_link( [] ).
@@ -67,10 +68,13 @@ get_processes( Filter ) ->
 init( Options ) ->
 	erlang:process_flag( trap_exit, true ),
 
-	Config = application:get_key( sesm ), 
-
-    {ok, #state{}}.
-
+	case  proplists:get_value( service, application:get_all_env( sesm ), undefined ) of
+		undefined ->
+			error_logger:error_msg(),
+			{stop, missing_config};
+		Config ->
+			{ok, #state{ service_config = Config }, 0 }
+	end.
 
 %% handle_call/3
 %% ====================================================================
@@ -120,6 +124,12 @@ handle_cast(Msg, State) ->
 	NewState :: term(),
 	Timeout :: non_neg_integer() | infinity.
 %% ====================================================================
+handle_info( timeout, #state{ service_config = Config } = State ) ->
+	
+	
+
+	{noreply, State };
+
 handle_info(Info, State) ->
     {noreply, State}.
 
@@ -153,4 +163,11 @@ code_change(OldVsn, State, Extra) ->
 %% Internal functions
 %% ====================================================================
 
+check_monitor( SysProc, SysName ) when is_integer( SysProc ) ->
+	check_monitor( integer_to_list( SysProc ), SysName );
 
+check_monitor( SysProc, SysName ) -> 
+	case sesm_util:proc_stat( ?PROC++"/"++SysProc++"/stat" ) of
+		{ok, Stat} -> {ok, Stat};
+		{error, Reason} -> {error, Reason}
+	end.

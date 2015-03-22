@@ -13,7 +13,6 @@
 
 
 
-
 start_link( Pid, Conf, Options ) ->
 	gen_server:start_link( ?MODULE, [Pid, Conf, Options], [] ).
 
