@@ -1,11 +1,40 @@
 -module( sesm_util ).
 
+-include("../include/sesm.hrl").
 
 -export( [filter_process/3, proc_stat/1, get_pid_stat/1, get_processlist/0, get_processlist/1] ).
--export( [filter_parent/2, filter_name/2, filter_alias/2] ).
+-export( [filter_parent/2, filter_name/2, filter_alias/2, filter_by/3] ).
 
 
--define( PROC, "/proc" ).
+
+filter_by( List, Pattern, By ) ->
+	filter_by_opt( List, Pattern, By, [], [] ).
+
+filter_by( List, Pattern, By, Opt ) ->
+	filter_by_opt( List, Pattern, By, Opt, [] ).
+
+filter_by_opt( [], _ , _ , _ , Ret ) ->
+	Ret;
+
+filter_by_opt( List, Pattern, By, Opt, Ret ) when is_list( By ) ->
+	filter_by_opt( List, Pattern, list_to_atom( By ), Opt, Ret );
+
+filter_by_opt( [Item|List], Pattern, By, Opt, Ret ) ->
+	case proplists:get_value( By, Item, undefined ) of
+		undefined ->
+			error_logger:warning_msg("[~p] WARN: Unknown data type ~p ~n", [?MODULE, By] ),
+			filter_by_opt( List, Pattern, By, Opt, Ret );
+		Subject ->
+			case is_same( Subject, Pattern ) of
+				true ->
+					filter_by_opt( List, Pattern, By, Opt, [Item|Ret] );
+				false ->
+					filter_by_opt( List, Pattern, By, Opt, Ret )
+			end
+	end.
+
+
+
 
 
 filter_parent( List, Search ) ->
@@ -58,6 +87,11 @@ get_pid_stat( ProcPid ) ->
 	end.
 
 
+
+
+
+
+
 proc_stat( File ) ->
 	case file:open( File, [read] ) of
 		{ok, Handle} ->
@@ -76,6 +110,10 @@ proc_stat( File ) ->
 			{error, Reason}
 	end.
 
+
+
+
+
 get_processlist( ) ->
 	get_processlist( ?PROC ).
 
@@ -90,6 +128,9 @@ get_processlist( Path ) ->
 			end;
 		{error, Reason} -> {error, Reason}
 	end.
+
+
+
 
 
 proc_list( List ) ->

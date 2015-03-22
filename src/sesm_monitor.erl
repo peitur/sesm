@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 
-
+-include("../include/sesm.hrl").
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -29,10 +29,14 @@ stop( Pid, Reason ) ->
 
 
 
+
+
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
 -record(state, { name, pid, ppid, expected, start_time, conf } ).
+
+
 
 %% init/1
 %% ====================================================================
@@ -69,6 +73,11 @@ init([ Pid, Conf, Options ]) ->
 	Timeout :: non_neg_integer() | infinity,
 	Reason :: term().
 %% ====================================================================
+
+
+handle_call( {stop, Reason}, _From, State ) ->
+	{ stop, Reason, ok, State };
+
 handle_call(Request, From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -103,7 +112,16 @@ handle_cast(Msg, State) ->
 handle_info( timeout, State ) ->
 	NewState = State,
 
-	{noreply, NewState};
+	case sesm_util:get_processlist( ?PROC ) of
+		{ok, ProcList } ->
+
+			io:format( ">>> ~p ", [ProcList] ),
+			
+			{noreply, NewState};
+		{error, Reason} ->
+			{noreply, NewState}
+	end;
+
 
 
 handle_info(Info, State) ->

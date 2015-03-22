@@ -12,8 +12,10 @@ main( Args ) ->
 	end.
 
 
+
+
 filter_by( List, Pattern, By ) ->
-	filter_by_opt( List, Pattern, By, [] ).
+	filter_by_opt( List, Pattern, By, [], [] ).
 
 filter_by( List, Pattern, By, Opt ) ->
 	filter_by_opt( List, Pattern, By, Opt, [] ).
@@ -26,13 +28,19 @@ filter_by_opt( List, Pattern, By, Opt, Ret ) when is_list( By ) ->
 	filter_by_opt( List, Pattern, list_to_atom( By ), Opt, Ret );
 
 filter_by_opt( [Item|List], Pattern, By, Opt, Ret ) ->
-	Subject = proplists:get_value( By, Item, undefined ),
-	case is_same( Subject, Pattern ) of
-		true ->
-			filter_by_opt( List, Pattern, By, Opt, [Item|Ret] );
-		false ->
-			filter_by_opt( List, Pattern, By, Opt, Ret )
+	case proplists:get_value( By, Item, undefined ) of
+		undefined ->
+			error_logger:warning_msg("[~p] WARN: Unknown data type ~p ~n", [?MODULE, By] ),
+			filter_by_opt( List, Pattern, By, Opt, Ret );
+		Subject ->
+			case is_same( Subject, Pattern ) of
+				true ->
+					filter_by_opt( List, Pattern, By, Opt, [Item|Ret] );
+				false ->
+					filter_by_opt( List, Pattern, By, Opt, Ret )
+			end
 	end.
+
 
 
 
