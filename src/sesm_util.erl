@@ -4,6 +4,23 @@
 
 -export( [filter_process/3, proc_stat/1, get_pid_stat/1, get_processlist/0, get_processlist/1] ).
 -export( [filter_parent/2, filter_name/2, filter_alias/2, filter_by/3] ).
+-export( [get_procstat/1] ).
+
+
+
+
+
+get_procstat( SysProc ) when is_atom( SysProc ) ->
+	get_procstat( atom_to_list( SysProc ) );
+
+get_procstat( SysProc ) when is_integer( SysProc ) ->
+	get_procstat( integer_to_list( SysProc ) );
+
+get_procstat( SysProc ) ->
+	?PROC++"/"++SysProc++"/stat".
+
+
+
 
 
 
@@ -32,6 +49,8 @@ filter_by_opt( [Item|List], Pattern, By, Opt, Ret ) ->
 					filter_by_opt( List, Pattern, By, Opt, Ret )
 			end
 	end.
+
+
 
 
 

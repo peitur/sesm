@@ -163,11 +163,28 @@ code_change(OldVsn, State, Extra) ->
 %% Internal functions
 %% ====================================================================
 
-check_monitor( SysProc, SysName ) when is_integer( SysProc ) ->
-	check_monitor( integer_to_list( SysProc ), SysName );
 
-check_monitor( SysProc, SysName ) -> 
-	case sesm_util:proc_stat( ?PROC++"/"++SysProc++"/stat" ) of
+
+
+
+check_monitor( SysProc, SysName ) ->
+	case sesm_util:proc_stat( sesm_util:get_procstat( SysProc) ) of
 		{ok, Stat} -> {ok, Stat};
 		{error, Reason} -> {error, Reason}
 	end.
+
+
+pidlist_running( List ) ->
+	pidlist_running( List, [], [] ).
+
+pidlist_running( [], RetRunning, RetMissing ) ->
+	{ok, [RetRunning, RetMissing]};
+
+pidlist_running( [{SysProc, SysName} | List], RetRunning, RetMissing ) ->
+	case check_monitor( SysProc, SysName ) of
+		{ok, State} ->
+			pidlist_running( List, [{SysProc, SysName}|RetRunning], RetMissing );
+		{error, Reason} ->
+			pidlist_running( List, RetRunning, [{SysProc, SysName}|RetMissing] )
+	end.
+
