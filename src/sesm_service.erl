@@ -125,7 +125,7 @@ handle_cast(Msg, State) ->
 	Timeout :: non_neg_integer() | infinity.
 %% ====================================================================
 handle_info( timeout, #state{ service_config = Config } = State ) ->
-	
+
 	
 
 	{noreply, State };
@@ -167,24 +167,24 @@ code_change(OldVsn, State, Extra) ->
 
 
 
-check_monitor( SysProc, SysName ) ->
+x_check_monitor( SysProc, SysName ) ->
 	case sesm_util:proc_stat( sesm_util:get_procstat( SysProc) ) of
 		{ok, Stat} -> {ok, Stat};
 		{error, Reason} -> {error, Reason}
 	end.
 
 
-pidlist_running( List ) ->
-	pidlist_running( List, [], [] ).
+x_pidlist_running( List ) ->
+	x_pidlist_running( List, [], [] ).
 
-pidlist_running( [], RetRunning, RetMissing ) ->
+x_pidlist_running( [], RetRunning, RetMissing ) ->
 	{ok, [RetRunning, RetMissing]};
 
-pidlist_running( [{SysProc, SysName} | List], RetRunning, RetMissing ) ->
-	case check_monitor( SysProc, SysName ) of
+x_pidlist_running( [{SysProc, SysName} | List], RetRunning, RetMissing ) ->
+	case x_check_monitor( SysProc, SysName ) of
 		{ok, State} ->
-			pidlist_running( List, [{SysProc, SysName}|RetRunning], RetMissing );
+			x_pidlist_running( List, [{SysProc, SysName}|RetRunning], RetMissing );
 		{error, Reason} ->
-			pidlist_running( List, RetRunning, [{SysProc, SysName}|RetMissing] )
+			x_pidlist_running( List, RetRunning, [{SysProc, SysName}|RetMissing] )
 	end.
 
