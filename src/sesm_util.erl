@@ -36,18 +36,25 @@ filter_by_opt( [], _ , _ , _ , Ret ) ->
 filter_by_opt( List, Pattern, By, Opt, Ret ) when is_list( By ) ->
 	filter_by_opt( List, Pattern, list_to_atom( By ), Opt, Ret );
 
-filter_by_opt( [Item|List], Pattern, By, Opt, Ret ) ->
-	case proplists:get_value( By, Item, undefined ) of
-		undefined ->
-			error_logger:warning_msg("[~p] WARN: Unknown data type ~p ~n", [?MODULE, By] ),
-			filter_by_opt( List, Pattern, By, Opt, Ret );
-		Subject ->
-			case is_same( Subject, Pattern ) of
-				true ->
-					filter_by_opt( List, Pattern, By, Opt, [Item|Ret] );
-				false ->
-					filter_by_opt( List, Pattern, By, Opt, Ret )
-			end
+
+filter_by_opt( [ ProcNum | List ], Pattern, By, Opt, Ret ) ->
+
+	case proc_stat( ?PROC++"/"++ProcNum++"/stat" ) of
+		{ok, Item} ->
+			case proplists:get_value( By, Item, undefined ) of
+				undefined ->
+					error_logger:warning_msg("[~p] WARN: Unknown data type ~p ~n", [?MODULE, By] ),
+					filter_by_opt( List, Pattern, By, Opt, Ret );
+				Subject ->
+					case is_same( Subject, Pattern ) of
+						true ->
+							filter_by_opt( List, Pattern, By, Opt, [Item|Ret] );
+						false ->
+							filter_by_opt( List, Pattern, By, Opt, Ret )
+					end
+			end;
+		{error, Reason} ->
+			filter_by_opt( List, Pattern, By, Opt, Ret )
 	end.
 
 
