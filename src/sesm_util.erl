@@ -124,7 +124,9 @@ proc_stat( File ) ->
 
 			case file:read_line( Handle ) of
 				{ok, Data} ->
-					{ok, parse_stat_line( Data ) };
+					Stat = parse_stat_line( Data ),				
+					file:close( Handle ),
+					{ok,  Stat};
 				eof ->
 					file:close( Handle ),
 					{error, eof};		

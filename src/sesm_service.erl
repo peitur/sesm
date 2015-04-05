@@ -9,14 +9,14 @@
 -export( [add_service/2, remove_service/2, modify_config/2] ).
 -export( [get_processes/0, get_processes/1] ).
 -export( [get_monitor_list/0] ).
-
+-export( [monitor_query/5] ).
 
 -include("../include/sesm.hrl").
 
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
--record(state, { monitor_map, service_config }).
+-record(state, { monitor_map, service_config, query_queue = [] }).
 
 start_link() ->
 	start_link( [] ).
@@ -77,7 +77,7 @@ init( Options ) ->
 			error_logger:error_msg("[~p] ERROR: Missing Config (undefined)", [ ?MODULE ]),
 			{stop, missing_config};
 		Config ->
-			{ok, #state{ service_config = Config }, ?MON_STARTIME }
+			{ok, #state{ service_config = Config, query_queue = [] }, ?MON_STARTIME }
 	end.
 
 %% handle_call/3
@@ -97,8 +97,15 @@ init( Options ) ->
 	Timeout :: non_neg_integer() | infinity,
 	Reason :: term().
 %% ====================================================================
-handle_call( {get, monitor, all}, _From, #state{ monitor_map = Map} = State ) ->
-    {reply, {ok, Map}, State};
+handle_call( {get, monitor, all}, From, #state{ monitor_map = Map, query_queue = Q } = State ) ->
+
+	Ref = erlang:make_ref(),
+	Pid = erlang:spawn( ?MODULE, monitor_query, [ status, Ref, self(), Map, [] ]),
+	io:format("#### Stared ~p ~n", [Pid] ),
+
+    { noreply, State#state{ query_queue = [{Ref, From, Pid}|Q] } };
+
+
 
 handle_call( {stop, Reason}, _From, State) ->
     {stop, Reason, ok, State};
@@ -145,6 +152,7 @@ handle_info( timeout, #state{ service_config = Config } = State ) ->
 
 
 
+
 handle_info( {'EXIT', Pid, Reason}, #state{ monitor_map = Map } = State ) ->
 % register monitor pid changes in map
 	error_logger:info_msg("[~p] INFO: Lost 'EXIT' monitor ~p : ~p ~n", [?MODULE, Pid, Reason] ),
@@ -155,6 +163,15 @@ handle_info( {'DOWN', MonitorReference, Process, Pid, Reason}, #state{ monitor_m
 	error_logger:info_msg("[~p] INFO: Lost 'DOWN' monitor ref:~p proc: ~p pid: ~p reason: ~p ~n", [?MODULE, MonitorReference, Process, Pid, Reason] ),
 	{noreply, State#state{ monitor_map = lists:keydelete( Pid, 2, Map ) } };
 
+
+handle_info( {reply, status, Ref, Ret}, #state{ query_queue = Q } = State ) ->
+	case lists:keysearch( Ref, 1, Q ) of
+		false -> {noreply, State};
+		{value, {Ref, From, QueuePid}} -> 
+			Q2 = lists:keydelete( Ref, 1, Q ),
+			gen_server:reply( From, Ret ),
+			{noreply, State#state{ query_queue = Q2 } }
+	end;
 
 handle_info(Info, State) ->
     {noreply, State}.
@@ -237,3 +254,35 @@ x_monitor_init( [ {Sign, Conf}|List], Ret ) ->
 			error_logger:error_msg( "[~p] ERROR: Error starting monitor for ~p : ~p ~n", [?MODULE, Sign, Reason] ),
 			x_monitor_init( List, Ret )
 	end.
+
+
+
+
+monitor_query( status, Ref, ReplyTo, BroadcastList, Options ) ->
+
+	Ret = lists:map( fun( {Sign,Pid} ) -> 
+						case sesm_monitor:get_current( Pid ) of
+							{ok, Current} -> {Sign, Current};
+							{error, Reason} -> {Sign, {error, Reason}}
+						end
+					end, BroadcastList ),
+
+	ReplyTo ! {reply, status, Ref, Ret};
+
+
+monitor_query( _Type, Ref, ReplyTo, _BroadcastList, _Options ) ->
+	ReplyTo ! {ok, Ref, {error, badargs}}.
+
+
+
+
+
+
+
+
+ % {undef,
+ % 	[{sesm_service,x_monitor_query,
+ % 		[ status, #Ref<0.0.0.5562> , <0.53.0> , [{sasl,<0.55.0>},{postgresql,<0.56.0>},{mysql,<0.57.0>},{apache,<0.58.0>}] , [] ],
+ % 		[]
+ % 	}]
+ % }

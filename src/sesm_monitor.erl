@@ -42,7 +42,7 @@ validate( Pid, Options ) ->
 get_pid( Pid ) -> gen_server:call(Pid, {get, pid} ).
 get_ppid( Pid ) -> gen_server:call(Pid, {get, ppid} ).
 get_expected( Pid ) -> gen_server:call(Pid, {get, expected} ).
-get_current( Pid ) -> gen_server:call(Pid, {get, get_current} ).
+get_current( Pid ) -> gen_server:call(Pid, {get, current} ).
 get_starttime( Pid ) -> gen_server:call(Pid, {get, starttime} ).
 
 
@@ -154,11 +154,11 @@ handle_info( timeout, #state{ name = Name, pid = undefined  } = State ) ->
 
 	case sesm_util:get_processlist( ?PROC ) of
 		{ok, ProcList } ->
-			io:format( "##### ~p ~n", [ProcList] ),
+%			io:format( "##### ~p ~n", [ProcList] ),
 
 			case sesm_util:filter_by( ProcList, "1", ppid ) of
 				DaemonList ->
-					io:format( ">>>> ~p ~n", [DaemonList] ),
+					io:format( ">>>> ~p ~n", [ erlang:length( DaemonList ) ] ) ,
 					{noreply, State#state{ pid = undefined, current = down }, ?MON_TIMEOUT };
 
 				{error, Reason} ->
