@@ -8,8 +8,8 @@
 -export( [start_link/0, start_link/1, stop/0, stop/1] ).
 -export( [add_service/2, remove_service/2, modify_config/2] ).
 -export( [get_processes/0, get_processes/1] ).
--export( [get_monitor_list/0] ).
 -export( [monitor_query/5] ).
+-export( [get_monitor_list/0, get_queue_list/0] ).
 
 -include("../include/sesm.hrl").
 
@@ -55,6 +55,10 @@ get_processes( Filter ) ->
 
 get_monitor_list() ->
 	gen_server:call( ?MODULE, {get, monitor, all } ).
+
+
+get_queue_list() ->
+	gen_server:call( ?MODULE, {get, queue, list } ).
 
 
 %% init/1
@@ -106,12 +110,14 @@ handle_call( {get, monitor, all}, From, #state{ monitor_map = Map, query_queue =
     { noreply, State#state{ query_queue = [{Ref, From, Pid}|Q] } };
 
 
+handle_call( {get, queue, list}, _From, #state{query_queue = Q} = State ) ->
+	{reply, {ok, Q}, State};
 
 handle_call( {stop, Reason}, _From, State) ->
     {stop, Reason, ok, State};
 
 handle_call(Request, From, State) ->
-    Reply = ok,
+    Reply = undefined,
     {reply, Reply, State}.
 
 
