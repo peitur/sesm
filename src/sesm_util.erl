@@ -38,7 +38,6 @@ filter_by_opt( List, Pattern, By, Opt, Ret ) when is_list( By ) ->
 
 
 filter_by_opt( [ ProcNum | List ], Pattern, By, Opt, Ret ) ->
-
 	case proc_stat( ?PROC++"/"++ProcNum++"/stat" ) of
 		{ok, Item} ->
 			case proplists:get_value( By, Item, undefined ) of
@@ -116,11 +115,13 @@ get_pid_stat( ProcPid ) ->
 
 
 
-
+proc_stat( ProcPid ) when is_integer( ProcPid ) ->
+	proc_stat( ?PROC++"/"++ProcPid++"/stat" );
 
 proc_stat( File ) ->
 	case file:open( File, [read] ) of
 		{ok, Handle} ->
+
 			case file:read_line( Handle ) of
 				{ok, Data} ->
 					{ok, parse_stat_line( Data ) };
@@ -131,8 +132,9 @@ proc_stat( File ) ->
 					file:close( Handle ),
 					{error, Reason}
 			end;
+
 		{error, Reason} ->
-			error_message:error_msg( "[~p] ERROR Could not open file ~p : ~p ~n", [?MODULE, File, Reason] ), 
+			error_logger:error_msg( "[~p] ERROR Could not open file ~p : ~p ~n", [?MODULE, File, Reason] ), 
 			{error, Reason}
 	end.
 

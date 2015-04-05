@@ -1,5 +1,8 @@
 -module( node ).
 
+
+% lists:foreach( fun( X ) -> lists:foreach( fun( N ) -> N ! {hello, X} end, Noden ) end, Messages ).
+
 -export([listen/0]).
 
 listen() ->

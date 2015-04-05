@@ -8,13 +8,15 @@
 -export( [start_link/0, start_link/1, stop/0, stop/1] ).
 -export( [add_service/2, remove_service/2, modify_config/2] ).
 -export( [get_processes/0, get_processes/1] ).
+-export( [get_monitor_list/0] ).
+
 
 -include("../include/sesm.hrl").
 
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
--record(state, { monior_map, service_config }).
+-record(state, { monitor_map, service_config }).
 
 start_link() ->
 	start_link( [] ).
@@ -33,13 +35,13 @@ stop( Reason ) ->
 
 
 add_service( Name, Options ) ->
-	gen_server:call( ?MODULE, {add_service, Name, Options} ).
+	gen_server:call( ?MODULE, {add, service, Name, Options} ).
 
 remove_service( Name, Options ) ->
-	gen_server:call( ?MODULE, {remove_service, Name, Options} ).
+	gen_server:call( ?MODULE, {stop, service, Name, Options} ).
 
 modify_config( Name, Options ) ->
-	gen_server:call( ?MODULE, {modify_config, Name, Options} ). 
+	gen_server:call( ?MODULE, {modify, config, Name, Options} ). 
 
 
 
@@ -49,8 +51,10 @@ get_processes() ->
 	get_processes( all ).
 
 get_processes( Filter ) ->
-	gen_server:call( ?MODULE, {get_processes, Filter} ). 
+	gen_server:call( ?MODULE, {get, processes, Filter} ). 
 
+get_monitor_list() ->
+	gen_server:call( ?MODULE, {get, monitor, all } ).
 
 
 %% init/1
@@ -70,10 +74,10 @@ init( Options ) ->
 
 	case  proplists:get_value( service, application:get_all_env( sesm ), undefined ) of
 		undefined ->
-			error_logger:error_msg(),
+			error_logger:error_msg("[~p] ERROR: Missing Config (undefined)", [ ?MODULE ]),
 			{stop, missing_config};
 		Config ->
-			{ok, #state{ service_config = Config }, 0 }
+			{ok, #state{ service_config = Config }, ?MON_STARTIME }
 	end.
 
 %% handle_call/3
@@ -93,6 +97,12 @@ init( Options ) ->
 	Timeout :: non_neg_integer() | infinity,
 	Reason :: term().
 %% ====================================================================
+handle_call( {get, monitor, all}, _From, #state{ monitor_map = Map} = State ) ->
+    {reply, {ok, Map}, State};
+
+handle_call( {stop, Reason}, _From, State) ->
+    {stop, Reason, ok, State};
+
 handle_call(Request, From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -126,13 +136,32 @@ handle_cast(Msg, State) ->
 %% ====================================================================
 handle_info( timeout, #state{ service_config = Config } = State ) ->
 
-	
+	case x_monitor_init( Config ) of
+		{error, Reason} -> 
+			{noreply, State };
+		InitMap -> 	
+			{noreply, State#state{ monitor_map = InitMap } }
+	end;	
 
-	{noreply, State };
+
+
+handle_info( {'EXIT', Pid, Reason}, #state{ monitor_map = Map } = State ) ->
+% register monitor pid changes in map
+	error_logger:info_msg("[~p] INFO: Lost 'EXIT' monitor ~p : ~p ~n", [?MODULE, Pid, Reason] ),
+	{noreply, State#state{ monitor_map = lists:keydelete( Pid, 2, Map ) } };
+
+handle_info( {'DOWN', MonitorReference, Process, Pid, Reason}, #state{ monitor_map = Map } = State ) ->
+% register monitor pid changes in map
+	error_logger:info_msg("[~p] INFO: Lost 'DOWN' monitor ref:~p proc: ~p pid: ~p reason: ~p ~n", [?MODULE, MonitorReference, Process, Pid, Reason] ),
+	{noreply, State#state{ monitor_map = lists:keydelete( Pid, 2, Map ) } };
+
 
 handle_info(Info, State) ->
     {noreply, State}.
 
+
+
+	
 
 %% terminate/2
 %% ====================================================================
@@ -144,6 +173,7 @@ handle_info(Info, State) ->
 			| term().
 %% ====================================================================
 terminate(Reason, State) ->
+	error_logger:info_msg("[~p] INFO: Terinating service :~p ~n", [?MODULE, Reason] ),
     ok.
 
 
@@ -188,3 +218,22 @@ x_pidlist_running( [{SysProc, SysName} | List], RetRunning, RetMissing ) ->
 			x_pidlist_running( List, RetRunning, [{SysProc, SysName}|RetMissing] )
 	end.
 
+
+
+
+% -spec x_monitor_init( ConfList ) -> Map.
+
+x_monitor_init( ConfList ) ->
+	 x_monitor_init( ConfList, [] ).
+
+x_monitor_init( [], Ret ) ->
+	lists:reverse( Ret );
+
+x_monitor_init( [ {Sign, Conf}|List], Ret ) ->
+	case sesm_monitor:start_monitor( self(), [{sign, Sign}|Conf], [] ) of
+		{ok, Pid} ->
+			x_monitor_init( List, [{Sign, Pid}|Ret] );
+		{error, Reason} ->
+			error_logger:error_msg( "[~p] ERROR: Error starting monitor for ~p : ~p ~n", [?MODULE, Sign, Reason] ),
+			x_monitor_init( List, Ret )
+	end.

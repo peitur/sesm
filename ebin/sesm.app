@@ -11,6 +11,6 @@
 	sesm_monitor_sup
 	]},
   {registered, []},
-  {applications, [kernel, stdlib, sasl]},
+  {applications, [kernel, stdlib]},
   {mod, {sesm_app,[]}}
  ]}.
