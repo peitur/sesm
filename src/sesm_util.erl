@@ -4,7 +4,7 @@
 
 -export( [filter_process/3, proc_stat/1, get_pid_stat/1, get_processlist/0, get_processlist/1] ).
 -export( [filter_parent/2, filter_name/2, filter_alias/2, filter_by/3] ).
--export( [get_procstat/1] ).
+-export( [get_procstat/1, is_same/2] ).
 
 
 
@@ -86,6 +86,12 @@ filter_process( [Item|List], Type, Search, Ret ) ->
 			filter_process( List, Type, Search, Ret )
 	end.
 
+is_same( Str1, Str2 ) when is_atom( Str1 ) ->
+	is_same( atom_to_list( Str1), Str2 );
+
+is_same( Str1, Str2 ) when is_atom( Str2 ) ->
+	is_same( Str1, atom_to_list( Str2 ) );
+
 is_same( Str, Str ) -> true;
 is_same( _Str1, _Str2 ) -> false.
 
@@ -116,7 +122,8 @@ get_pid_stat( ProcPid ) ->
 
 
 proc_stat( ProcPid ) when is_integer( ProcPid ) ->
-	proc_stat( ?PROC++"/"++ProcPid++"/stat" );
+	ProcPidStr = integer_to_list( ProcPid ),
+	proc_stat( ?PROC++"/"++ProcPidStr++"/stat" );
 
 proc_stat( File ) ->
 	case file:open( File, [read] ) of

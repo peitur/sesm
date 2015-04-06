@@ -9,7 +9,7 @@
 -export( [add_service/2, remove_service/2, modify_config/2] ).
 -export( [get_processes/0, get_processes/1] ).
 -export( [monitor_query/5] ).
--export( [get_monitor_list/0, get_queue_list/0] ).
+-export( [get_monitor_list/0, get_qqueue_list/0, get_qqueue_size/0] ).
 
 -include("../include/sesm.hrl").
 
@@ -57,8 +57,11 @@ get_monitor_list() ->
 	gen_server:call( ?MODULE, {get, monitor, all } ).
 
 
-get_queue_list() ->
+get_qqueue_list() ->
 	gen_server:call( ?MODULE, {get, queue, list } ).
+
+get_qqueue_size() ->
+	gen_server:call( ?MODULE, {get, queue, size } ).
 
 
 %% init/1
@@ -109,6 +112,8 @@ handle_call( {get, monitor, all}, From, #state{ monitor_map = Map, query_queue =
 
     { noreply, State#state{ query_queue = [{Ref, From, Pid}|Q] } };
 
+handle_call( {get, queue, size}, _From, #state{query_queue = Q} = State ) ->
+	{reply, {ok, erlang:length( Q ) }, State};
 
 handle_call( {get, queue, list}, _From, #state{query_queue = Q} = State ) ->
 	{reply, {ok, Q}, State};

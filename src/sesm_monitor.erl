@@ -68,7 +68,7 @@ get_starttime( Pid ) -> gen_server:call(Pid, {get, starttime} ).
 init([ ParentPid, Conf, Options ]) ->
 	erlang:process_flag( trap_exit, true ),
 
-	Name = proplists:get_value( name, Conf ),
+	Name = proplists:get_value( name, Conf, proplists:get_value( title, Conf ) ),
 	ExpState = proplists:get_value( expected, Conf, ?MON_STATE ),
 	StartTime = erlang:now(),
 	Timeout = proplists:get_value( timeout, Conf, ?MON_TIMEOUT ),
@@ -148,28 +148,39 @@ handle_cast( _Msg, State) ->
 
 
 
+
 %% Initial timeout, used when pid has not yet been descided
 handle_info( timeout, #state{ name = Name, pid = undefined  } = State ) ->
-	NewState = State,
-
 	case sesm_util:get_processlist( ?PROC ) of
 		{ok, ProcList } ->
 %			io:format( "##### ~p ~n", [ProcList] ),
-
 			case sesm_util:filter_by( ProcList, "1", ppid ) of
+				{error, Reason} ->
+					{noreply, State#state{ pid = undefined, current = down }, ?MON_TIMEOUT };
 				DaemonList ->
 					io:format( ">>>> ~p ~n", [ erlang:length( DaemonList ) ] ) ,
-					{noreply, State#state{ pid = undefined, current = down }, ?MON_TIMEOUT };
-
-				{error, Reason} ->
-					{noreply, State#state{ pid = undefined, current = down }, ?MON_TIMEOUT }
+					case x_monitor_detect( Name, DaemonList ) of
+						undefined ->
+%							io:format( ">>>> Could not find ~p ~n", [ Name ] ) ,
+							{noreply, State#state{ pid = undefined, current = down }, ?MON_TIMEOUT };
+						ProcItem ->
+							io:format( ">>>> Detected ~p ~n", [ Name ] ) ,
+							Pid = proplists:get_value( pid, ProcItem ),
+							ParentPid = proplists:get_value( ppid, ProcItem ),
+							{noreply, State#state{ pid = Pid, ppid = ParentPid, current = up }, ?MON_TIMEOUT }
+					end
 			end;
 		{error, Reason} ->
-			{noreply, NewState, ?MON_TIMEOUT }
+			{noreply, State, ?MON_TIMEOUT }
 	end;
 
 
-
+handle_info( timeout, #state{ name = Name, pid = Pid  } = State ) ->
+	io:format(">>>> Verify ~p as ~p ~n",[Name, Pid] ),
+	case x_verify_pid( Pid, Name ) of
+		true -> {noreply, State, ?MON_TIMEOUT };
+		false -> {noreply, State#state{ pid = undefined, ppid = undefined }, 0 }
+	end;
 
 
 handle_info( _Info, State) ->
@@ -206,5 +217,28 @@ code_change( _OldVsn, State, _Extra) ->
 %% Internal functions
 %% ====================================================================
 
+x_monitor_detect( _Name, [] ) ->
+	undefined;
+
+x_monitor_detect( Name, [Item|List] ) ->
+	case proplists:get_value( name, Item, undefined ) of
+		Name -> Item;
+		undefined -> x_monitor_detect( Name, List ); 
+		Other -> x_monitor_detect( Name, List )
+	end.
+
+
+x_verify_pid( Pid, Name ) when is_list( Pid ) ->
+	x_verify_pid( list_to_integer( Pid ), Name );
+
+x_verify_pid( Pid, Name ) ->
+	case sesm_util:proc_stat( Pid ) of
+		{error, Reason} -> false;
+		{ok, Item} -> 
+			case sesm_util:is_same( Name, proplists:get_value( name, Item, undefined ) ) of
+				true -> true;
+				false -> false
+			end
+	end.
 
 
