@@ -49,7 +49,7 @@ get_starttime( Pid ) -> gen_server:call(Pid, {get, starttime} ).
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
--record(state, { parent, name, pid = undefined, ppid = undefined, expected = running, current, start_time, conf, timeout } ).
+-record(state, { parent, name, title, pid = undefined, ppid = undefined, expected = running, current, start_time, conf, timeout } ).
 
 
 
@@ -68,13 +68,19 @@ get_starttime( Pid ) -> gen_server:call(Pid, {get, starttime} ).
 init([ ParentPid, Conf, Options ]) ->
 	erlang:process_flag( trap_exit, true ),
 
-	Name = proplists:get_value( name, Conf, proplists:get_value( title, Conf ) ),
-	ExpState = proplists:get_value( expected, Conf, ?MON_STATE ),
-	StartTime = erlang:now(),
-	Timeout = proplists:get_value( timeout, Conf, ?MON_TIMEOUT ),
+	case proplists:get_value( title, Conf, undefined ) of
+		undefined -> 
+			{stop, badarg};
 
-    {ok, #state{ parent = ParentPid, conf = Conf, start_time = StartTime, name = Name, expected = ExpState, current = down }, 0 }.
+		Title ->
+			Name = proplists:get_value( name, Conf, Title ),
 
+			ExpState = proplists:get_value( expected, Conf, ?MON_STATE ),
+			StartTime = erlang:now(),
+			Timeout = proplists:get_value( timeout, Conf, ?MON_TIMEOUT ),
+
+		    {ok, #state{ parent = ParentPid, conf = Conf, start_time = StartTime, name = Name, title = Title, expected = ExpState, current = down, timeout = Timeout }, 0 }
+	end.
 
 %% handle_call/3
 %% ====================================================================
@@ -95,28 +101,28 @@ init([ ParentPid, Conf, Options ]) ->
 %% ====================================================================
 
 handle_call( {get, pid}, _From, State ) ->
-	{ reply, {ok, State#state.pid }, State };
+	{ reply, {ok, State#state.pid }, State, State#state.timeout };
 
 handle_call( {get, ppid}, _From, State ) ->
-	{ reply, {ok, State#state.ppid }, State };
+	{ reply, {ok, State#state.ppid }, State, State#state.timeout };
 
 handle_call( {get, expected}, _From, State ) ->
-	{ reply, {ok, State#state.expected }, State };
+	{ reply, {ok, State#state.expected }, State, State#state.timeout };
 
 handle_call( {get, current}, _From, State ) ->
-	{ reply, {ok, State#state.current }, State };
+	{ reply, {ok, State#state.current }, State, State#state.timeout };
 
 handle_call( {get, starttime}, _From, State ) ->
-	{ reply, {ok, State#state.start_time }, State };
+	{ reply, {ok, State#state.start_time }, State, State#state.timeout };
 
 
 
 handle_call( {stop, Reason}, _From, State ) ->
-	{ stop, Reason, ok, State };
+	{ stop, Reason, ok, State, State#state.timeout };
 
 handle_call( _Request, _From, State) ->
     Reply = ok,
-    {reply, Reply, State}.
+    {reply, Reply, State, State#state.timeout}.
 
 
 %% handle_cast/2
@@ -150,41 +156,44 @@ handle_cast( _Msg, State) ->
 
 
 %% Initial timeout, used when pid has not yet been descided
-handle_info( timeout, #state{ name = Name, pid = undefined  } = State ) ->
+handle_info( timeout, #state{ name = Name, pid = undefined, expected = Expected, current = Current } = State ) ->
 	case sesm_util:get_processlist( ?PROC ) of
 		{ok, ProcList } ->
-%			io:format( "##### ~p ~n", [ProcList] ),
+
 			case sesm_util:filter_by( ProcList, "1", ppid ) of
 				{error, Reason} ->
-					{noreply, State#state{ pid = undefined, current = down }, ?MON_TIMEOUT };
+				
+					{noreply, State#state{ pid = undefined, current = down }, State#state.timeout };
+				
 				DaemonList ->
-					io:format( ">>>> ~p ~n", [ erlang:length( DaemonList ) ] ) ,
+
 					case x_monitor_detect( Name, DaemonList ) of
 						undefined ->
-%							io:format( ">>>> Could not find ~p ~n", [ Name ] ) ,
-							{noreply, State#state{ pid = undefined, current = down }, ?MON_TIMEOUT };
+							% expected state, current state, new state
+							io:format( "<<<< Down ~p ~n", [ Name ] ) ,
+							{noreply, State#state{ pid = undefined, current = down }, State#state.timeout };
 						ProcItem ->
 							io:format( ">>>> Detected ~p ~n", [ Name ] ) ,
 							Pid = proplists:get_value( pid, ProcItem ),
 							ParentPid = proplists:get_value( ppid, ProcItem ),
-							{noreply, State#state{ pid = Pid, ppid = ParentPid, current = up }, ?MON_TIMEOUT }
+							{noreply, State#state{ pid = Pid, ppid = ParentPid, current = up }, State#state.timeout }
 					end
+
 			end;
 		{error, Reason} ->
-			{noreply, State, ?MON_TIMEOUT }
+			{noreply, State, State#state.timeout }
 	end;
 
 
 handle_info( timeout, #state{ name = Name, pid = Pid  } = State ) ->
-	io:format(">>>> Verify ~p as ~p ~n",[Name, Pid] ),
 	case x_verify_pid( Pid, Name ) of
-		true -> {noreply, State, ?MON_TIMEOUT };
-		false -> {noreply, State#state{ pid = undefined, ppid = undefined }, 0 }
+		true -> {noreply, State, State#state.timeout }; % service pid has been kept
+		false -> {noreply, State#state{ pid = undefined, ppid = undefined }, 0 } % state has changed or been restarted, use a state detectoin tp descide,
 	end;
 
 
 handle_info( _Info, State) ->
-    {noreply, State}.
+    {noreply, State, State#state.timeout}.
 
 
 %% terminate/2

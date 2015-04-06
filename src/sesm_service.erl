@@ -258,7 +258,7 @@ x_monitor_init( [], Ret ) ->
 	lists:reverse( Ret );
 
 x_monitor_init( [ {Sign, Conf}|List], Ret ) ->
-	case sesm_monitor:start_monitor( self(), [{sign, Sign}|Conf], [] ) of
+	case sesm_monitor:start_monitor( self(), [{title, Sign}|Conf], [] ) of
 		{ok, Pid} ->
 			x_monitor_init( List, [{Sign, Pid}|Ret] );
 		{error, Reason} ->
