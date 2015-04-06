@@ -39,11 +39,16 @@ validate( Pid, Options ) ->
 
 
 
+get_name( Pid ) -> gen_server:call(Pid, {get, name} ).
+get_title( Pid ) -> gen_server:call(Pid, {get, title} ).
 get_pid( Pid ) -> gen_server:call(Pid, {get, pid} ).
 get_ppid( Pid ) -> gen_server:call(Pid, {get, ppid} ).
 get_expected( Pid ) -> gen_server:call(Pid, {get, expected} ).
 get_current( Pid ) -> gen_server:call(Pid, {get, current} ).
 get_starttime( Pid ) -> gen_server:call(Pid, {get, starttime} ).
+
+get_config( Pid ) -> gen_server:call(Pid, {get, config} ).
+
 
 
 %% ====================================================================
@@ -99,6 +104,15 @@ init([ ParentPid, Conf, Options ]) ->
 	Timeout :: non_neg_integer() | infinity,
 	Reason :: term().
 %% ====================================================================
+
+handle_call( {get, config}, _From, State ) ->
+	{ reply, {ok, State#state.conf }, State, State#state.timeout };
+
+handle_call( {get, name}, _From, State ) ->
+	{ reply, {ok, State#state.name }, State, State#state.timeout };
+
+handle_call( {get, title}, _From, State ) ->
+	{ reply, {ok, State#state.title }, State, State#state.timeout };
 
 handle_call( {get, pid}, _From, State ) ->
 	{ reply, {ok, State#state.pid }, State, State#state.timeout };
