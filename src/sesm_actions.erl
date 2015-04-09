@@ -1,13 +1,12 @@
 -module( sesm_actions ).
 
 -export([
-		from_expected/2,
-		to_expected/2
+		action/5
 	]).
 
 
 
-from_expected( apache, Options ) -> ok.
+action( Expected, Currnt, New, apache, Options ) -> ok;
 
-to_expected( apache, Options ) -> ok.
 
+action( Expected, Currnt, New, Job, Options ) -> ok.

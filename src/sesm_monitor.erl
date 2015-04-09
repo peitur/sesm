@@ -12,6 +12,7 @@
 -export([start_link/3, start_monitor/3, stop/1, stop/2]).
 -export([get_pid/1, get_ppid/1, get_current/1, get_expected/1, get_starttime/1]).
 -export([ validate/1, validate/2]).
+-export([monitor_timer/2]).
 
 % application:start( sasl ).
 % application:start(sesm).
@@ -35,7 +36,7 @@ validate( Pid ) ->
 	validate( Pid, [] ).
 
 validate( Pid, Options ) ->
-	gen_server:call( Pid, {validate, Options}).
+	gen_server:cast( Pid, {validate, Options}).
 
 
 
@@ -54,7 +55,7 @@ get_config( Pid ) -> gen_server:call(Pid, {get, config} ).
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
--record(state, { parent, name, title, pid = undefined, ppid = undefined, expected = running, current, start_time, conf, timeout } ).
+-record(state, { parent, name, title, pid = undefined, ppid = undefined, expected = running, current, start_time, conf, timeout, timerpid = undefined } ).
 
 
 
@@ -70,7 +71,7 @@ get_config( Pid ) -> gen_server:call(Pid, {get, config} ).
 	State :: term(),
 	Timeout :: non_neg_integer() | infinity.
 %% ====================================================================
-init([ ParentPid, Conf, Options ]) ->
+init([ ParentPid, Conf, _Options ]) ->
 	erlang:process_flag( trap_exit, true ),
 
 	case proplists:get_value( title, Conf, undefined ) of
@@ -83,8 +84,10 @@ init([ ParentPid, Conf, Options ]) ->
 			ExpState = proplists:get_value( expected, Conf, ?MON_STATE ),
 			StartTime = erlang:now(),
 			Timeout = proplists:get_value( timeout, Conf, ?MON_TIMEOUT ),
+			TimerPid = spawn_link( ?MODULE, monitor_timer, [self(), Timeout] ),
 
-		    {ok, #state{ parent = ParentPid, conf = Conf, start_time = StartTime, name = Name, title = Title, expected = ExpState, current = down, timeout = Timeout }, 0 }
+
+		    {ok, #state{ parent = ParentPid, conf = Conf, start_time = StartTime, name = Name, title = Title, expected = ExpState, current = down, timeout = Timeout, timerpid = TimerPid }, 0 }
 	end.
 
 %% handle_call/3
@@ -106,37 +109,37 @@ init([ ParentPid, Conf, Options ]) ->
 %% ====================================================================
 
 handle_call( {get, config}, _From, State ) ->
-	{ reply, {ok, State#state.conf }, State, State#state.timeout };
+	{ reply, {ok, State#state.conf }, State };
 
 handle_call( {get, name}, _From, State ) ->
-	{ reply, {ok, State#state.name }, State, State#state.timeout };
+	{ reply, {ok, State#state.name }, State };
 
 handle_call( {get, title}, _From, State ) ->
-	{ reply, {ok, State#state.title }, State, State#state.timeout };
+	{ reply, {ok, State#state.title }, State };
 
 handle_call( {get, pid}, _From, State ) ->
-	{ reply, {ok, State#state.pid }, State, State#state.timeout };
+	{ reply, {ok, State#state.pid }, State };
 
 handle_call( {get, ppid}, _From, State ) ->
-	{ reply, {ok, State#state.ppid }, State, State#state.timeout };
+	{ reply, {ok, State#state.ppid }, State };
 
 handle_call( {get, expected}, _From, State ) ->
-	{ reply, {ok, State#state.expected }, State, State#state.timeout };
+	{ reply, {ok, State#state.expected }, State };
 
 handle_call( {get, current}, _From, State ) ->
-	{ reply, {ok, State#state.current }, State, State#state.timeout };
+	{ reply, {ok, State#state.current }, State };
 
 handle_call( {get, starttime}, _From, State ) ->
-	{ reply, {ok, State#state.start_time }, State, State#state.timeout };
+	{ reply, {ok, State#state.start_time }, State };
 
 
 
 handle_call( {stop, Reason}, _From, State ) ->
-	{ stop, Reason, ok, State, State#state.timeout };
+	{ stop, Reason, ok, State };
 
-handle_call( _Request, _From, State) ->
+handle_call( _Request, _From, State ) ->
     Reply = ok,
-    {reply, Reply, State, State#state.timeout}.
+    {reply, Reply, State }.
 
 
 %% handle_cast/2
@@ -150,6 +153,9 @@ handle_call( _Request, _From, State) ->
 	NewState :: term(),
 	Timeout :: non_neg_integer() | infinity.
 %% ====================================================================
+handle_cast( {validate, _Options}, State ) ->
+	{noreply, State, 0};
+
 handle_cast( _Msg, State) ->
     {noreply, State}.
 
@@ -167,17 +173,15 @@ handle_cast( _Msg, State) ->
 %% ====================================================================
 
 
-
-
 %% Initial timeout, used when pid has not yet been descided
-handle_info( timeout, #state{ name = Name, pid = undefined, expected = Expected, current = Current } = State ) ->
+handle_info( timeout, #state{ name = Name, pid = undefined, expected = _Expected, current = _Current } = State ) ->
 	case sesm_util:get_processlist( ?PROC ) of
 		{ok, ProcList } ->
 
 			case sesm_util:filter_by( ProcList, "1", ppid ) of
 				{error, Reason} ->
-				
-					{noreply, State#state{ pid = undefined, current = down }, State#state.timeout };
+					error_logger:error_msg( "[~p] ERROR: Filter fails ~p : ~p ~n", [?MODULE, Name, Reason] ),
+					{noreply, State#state{ pid = undefined, current = down } };
 				
 				DaemonList ->
 
@@ -185,29 +189,53 @@ handle_info( timeout, #state{ name = Name, pid = undefined, expected = Expected,
 						undefined ->
 							% expected state, current state, new state
 							io:format( "<<<< Down ~p ~n", [ Name ] ) ,
-							{noreply, State#state{ pid = undefined, current = down }, State#state.timeout };
+							{noreply, State#state{ pid = undefined, current = down } };
 						ProcItem ->
 							io:format( ">>>> Detected ~p ~n", [ Name ] ) ,
 							Pid = proplists:get_value( pid, ProcItem ),
 							ParentPid = proplists:get_value( ppid, ProcItem ),
-							{noreply, State#state{ pid = Pid, ppid = ParentPid, current = up }, State#state.timeout }
+							{noreply, State#state{ pid = Pid, ppid = ParentPid, current = up } }
 					end
 
 			end;
 		{error, Reason} ->
-			{noreply, State, State#state.timeout }
+			{noreply, State }
 	end;
 
 
 handle_info( timeout, #state{ name = Name, pid = Pid  } = State ) ->
 	case x_verify_pid( Pid, Name ) of
-		true -> {noreply, State, State#state.timeout }; % service pid has been kept
+		true -> {noreply, State }; % service pid has been kept
 		false -> {noreply, State#state{ pid = undefined, ppid = undefined }, 0 } % state has changed or been restarted, use a state detectoin tp descide,
 	end;
 
 
+handle_info( {'EXIT', Pid, Reason}, #state{ name = Name, timerpid = Pid } = State ) ->
+	error_logger:info_msg("[~p] INFO: Lost 'EXIT' timer for monitor ~p : ~p ~n", [?MODULE, Name, Reason] ),
+	TimerPid = spawn_link( ?MODULE, monitor_timer, [self(), State#state.timeout ] ),
+	{noreply, State#state{ timerpid = TimerPid} };
+
+
+handle_info( {'EXIT', Pid, Reason}, #state{ name = Name } = State ) ->
+	error_logger:info_msg("[~p] INFO: Lost 'EXIT' child for monitor ~p ~p: ~p ~n", [?MODULE, Name, Pid, Reason] ),
+	{noreply, State };
+
+
+
+
+handle_info( {'DOWN', MonitorReference, Process, Pid, Reason}, #state{ name = Name, timerpid = Pid } = State ) ->
+	error_logger:info_msg("[~p] INFO: Lost 'DOWN' timer for monitor ~p ref:~p proc: ~p pid: ~p reason: ~p ~n", [?MODULE, Name, MonitorReference, Process, Pid, Reason] ),
+	TimerPid = spawn_link( ?MODULE, monitor_timer, [self(), State#state.timeout ] ),
+	{noreply, State#state{ timerpid = TimerPid} };
+
+handle_info( {'DOWN', MonitorReference, Process, Pid, Reason}, #state{ name = Name } = State ) ->
+	error_logger:info_msg("[~p] INFO: Lost 'DOWN' child for monitor ~p ref:~p proc: ~p pid: ~p reason: ~p ~n", [?MODULE, Name, MonitorReference, Process, Pid, Reason] ),
+	{noreply, State };
+
+
+
 handle_info( _Info, State) ->
-    {noreply, State, State#state.timeout}.
+    {noreply, State }.
 
 
 %% terminate/2
@@ -265,3 +293,15 @@ x_verify_pid( Pid, Name ) ->
 	end.
 
 
+
+
+monitor_timer( ParentPid, Timeout ) ->
+	receive
+		{timeout, NewTimeout} ->
+			monitor_timer( ParentPid, NewTimeout );
+		Other ->
+			monitor_timer( ParentPid, Timeout )			
+		after Timeout ->
+			sesm_monitor:validate( ParentPid ),
+			monitor_timer( ParentPid, Timeout )
+	end.
