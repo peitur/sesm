@@ -5,18 +5,18 @@
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export( [start_link/0, start_link/1, stop/0, stop/1] ).
+-export( [start_link/0, start_link/1, stop/0, stop/1, stop/2] ).
 -export( [add_service/2, remove_service/2, modify_config/2] ).
--export( [get_processes/0, get_processes/1] ).
+-export( [get_processes/0, get_processes/1, get_processes/2] ).
 -export( [monitor_query/5] ).
--export( [get_monitor_list/0, get_qqueue_list/0, get_qqueue_size/0] ).
+-export( [get_monitor_list/0, get_monitor_list/1, get_qqueue_list/0, get_qqueue_list/1, get_qqueue_size/0] ).
 
 -include("../include/sesm.hrl").
 
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
--record(state, { monitor_map, service_config, query_queue = [] }).
+-record(state, { monitor_map, service_config, query_queue = [], timeout, quorum = [] }).
 
 start_link() ->
 	start_link( [] ).
@@ -25,10 +25,13 @@ start_link( Options ) ->
 	gen_server:start_link( {local, ?MODULE}, ?MODULE, Options, [] ).
 
 stop( ) ->
-	stop( normal ).
+	stop( ?MODULE, normal ).
 
 stop( Reason ) ->
-	gen_server:call( ?MODULE, {stop, Reason }).
+	stop( ?MODULE, Reason ).
+
+stop( Node, Reason ) ->
+	gen_server:call( Node, {stop, Reason } ).
 
 
 
@@ -48,17 +51,30 @@ modify_config( Name, Options ) ->
 
 
 get_processes() ->
-	get_processes( all ).
+	get_processes( ?MODULE , all ).
 
 get_processes( Filter ) ->
-	gen_server:call( ?MODULE, {get, processes, Filter} ). 
+	get_processes( ?MODULE, Filter ).
+
+get_processes( Node, Filter ) ->
+	gen_server:call( Node, {get, processes, Filter} ). 
+
+
 
 get_monitor_list() ->
 	gen_server:call( ?MODULE, {get, monitor, all } ).
 
+get_monitor_list( Node ) ->
+	gen_server:call( Node, {get, monitor, all } ).
+
+
 
 get_qqueue_list() ->
 	gen_server:call( ?MODULE, {get, queue, list } ).
+
+get_qqueue_list( Node ) ->
+	gen_server:call( Node, {get, queue, list } ).
+
 
 get_qqueue_size() ->
 	gen_server:call( ?MODULE, {get, queue, size } ).
@@ -79,12 +95,18 @@ get_qqueue_size() ->
 init( Options ) ->
 	erlang:process_flag( trap_exit, true ),
 
+	Quorum = case proplists:get_value( quorum, application:get_all_env( sesm ), undefined ) of
+		undefined -> [];
+		[{ Proc, NodeList }] ->
+			lists:map( fun( Node ) -> {Proc, Node } end, NodeList )
+	end,
+
 	case  proplists:get_value( service, application:get_all_env( sesm ), undefined ) of
 		undefined ->
-			error_logger:error_msg("[~p] ERROR: Missing Config (undefined)", [ ?MODULE ]),
+			error_logger:error_msg("[~p] ERROR: Missing Service Config (undefined)", [ ?MODULE ]),
 			{stop, missing_config};
 		Config ->
-			{ok, #state{ service_config = Config, query_queue = [] }, ?MON_STARTIME }
+			{ok, #state{ service_config = Config, query_queue = [], quorum = Quorum }, ?MON_STARTIME }
 	end.
 
 %% handle_call/3
@@ -225,6 +247,7 @@ code_change(OldVsn, State, Extra) ->
 
 
 
+
 x_check_monitor( SysProc, SysName ) ->
 	case sesm_util:proc_stat( sesm_util:get_procstat( SysProc) ) of
 		{ok, Stat} -> {ok, Stat};
@@ -265,6 +288,7 @@ x_monitor_init( [ {Sign, Conf}|List], Ret ) ->
 			error_logger:error_msg( "[~p] ERROR: Error starting monitor for ~p : ~p ~n", [?MODULE, Sign, Reason] ),
 			x_monitor_init( List, Ret )
 	end.
+
 
 
 

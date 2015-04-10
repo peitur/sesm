@@ -188,10 +188,10 @@ handle_info( timeout, #state{ name = Name, pid = undefined, expected = _Expected
 					case x_monitor_detect( Name, DaemonList ) of
 						undefined ->
 							% expected state, current state, new state
-							io:format( "<<<< Down ~p ~n", [ Name ] ) ,
+							% io:format( "<<<< Down ~p ~n", [ Name ] ) ,
 							{noreply, State#state{ pid = undefined, current = down } };
 						ProcItem ->
-							io:format( ">>>> Detected ~p ~n", [ Name ] ) ,
+							% io:format( ">>>> Detected ~p ~n", [ Name ] ) ,
 							Pid = proplists:get_value( pid, ProcItem ),
 							ParentPid = proplists:get_value( ppid, ProcItem ),
 							{noreply, State#state{ pid = Pid, ppid = ParentPid, current = up } }
