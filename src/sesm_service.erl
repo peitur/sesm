@@ -9,7 +9,7 @@
 -export( [add_service/2, remove_service/2, modify_config/2] ).
 -export( [get_processes/0, get_processes/1, get_processes/2] ).
 -export( [monitor_query/5] ).
--export( [get_monitor_list/0, get_monitor_list/1, get_qqueue_list/0, get_qqueue_list/1, get_qqueue_size/0] ).
+-export( [get_monitor_list/0, get_monitor_list/1, get_qqueue_list/0, get_qqueue_list/1, get_qqueue_size/0, get_qqueue_size/1] ).
 
 -include("../include/sesm.hrl").
 
@@ -24,7 +24,7 @@ start_link() ->
 start_link( Options ) ->
 	gen_server:start_link( {local, ?MODULE}, ?MODULE, Options, [] ).
 
-stop( ) ->
+stop() ->
 	stop( ?MODULE, normal ).
 
 stop( Reason ) ->
@@ -77,7 +77,10 @@ get_qqueue_list( Node ) ->
 
 
 get_qqueue_size() ->
-	gen_server:call( ?MODULE, {get, queue, size } ).
+	get_qqueue_size( ?MODULE ).
+
+get_qqueue_size( Node ) ->
+	gen_server:call( Node, {get, queue, size } ).
 
 
 %% init/1
