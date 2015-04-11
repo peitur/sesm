@@ -183,7 +183,7 @@ handle_info( timeout, #state{ service_config = Config } = State ) ->
 		{ok, ignore} ->
 			{noreply, State};
 		{error, Reason} -> 
-			{noreply, State };
+			{stop, Reason, State};
 		InitMap -> 	
 			{noreply, State#state{ monitor_map = InitMap } }
 	end;	
@@ -289,13 +289,18 @@ x_monitor_init( [ {Sign, Conf}|List], Ret ) ->
 	case proplists:get_value( ignore, Conf, false ) of
 		true -> x_monitor_init( List, Ret );
 		false ->
+			
 			case sesm_monitor:start_monitor( self(), [{title, Sign}|Conf], [] ) of
 				{ok, Pid} ->
 					x_monitor_init( List, [{Sign, Pid}|Ret] );
 				{error, Reason} ->
 					error_logger:error_msg( "[~p] ERROR: Error starting monitor for ~p : ~p ~n", [?MODULE, Sign, Reason] ),
 					x_monitor_init( List, Ret )
-			end
+			end;
+
+		Reason -> 
+			error_logger:error_msg("[~p] ERROR: Bad ignore value, true or false for ~p : ~p ~n", [?MODULE, Sign, Reason] ),
+			x_monitor_init( List, Ret )
 	end.
 
 
