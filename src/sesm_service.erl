@@ -180,6 +180,8 @@ handle_cast(Msg, State) ->
 handle_info( timeout, #state{ service_config = Config } = State ) ->
 
 	case x_monitor_init( Config ) of
+		{ok, ignore} ->
+			{noreply, State};
 		{error, Reason} -> 
 			{noreply, State };
 		InitMap -> 	
@@ -284,12 +286,16 @@ x_monitor_init( [], Ret ) ->
 	lists:reverse( Ret );
 
 x_monitor_init( [ {Sign, Conf}|List], Ret ) ->
-	case sesm_monitor:start_monitor( self(), [{title, Sign}|Conf], [] ) of
-		{ok, Pid} ->
-			x_monitor_init( List, [{Sign, Pid}|Ret] );
-		{error, Reason} ->
-			error_logger:error_msg( "[~p] ERROR: Error starting monitor for ~p : ~p ~n", [?MODULE, Sign, Reason] ),
-			x_monitor_init( List, Ret )
+	case proplists:get_value( ignore, Conf, false ) of
+		true -> x_monitor_init( List, Ret );
+		false ->
+			case sesm_monitor:start_monitor( self(), [{title, Sign}|Conf], [] ) of
+				{ok, Pid} ->
+					x_monitor_init( List, [{Sign, Pid}|Ret] );
+				{error, Reason} ->
+					error_logger:error_msg( "[~p] ERROR: Error starting monitor for ~p : ~p ~n", [?MODULE, Sign, Reason] ),
+					x_monitor_init( List, Ret )
+			end
 	end.
 
 
