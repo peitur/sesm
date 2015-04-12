@@ -82,6 +82,25 @@ get_qqueue_size() ->
 get_qqueue_size( Node ) ->
 	gen_server:call( Node, {get, queue, size } ).
 
+% request, 	[takeover|info|update], 			Service,	[Config,Tuple]			ex: {request, info, Service}
+%																						{request, takeover, Service, [{value, N}]}
+%
+% ack,		[takeover|info|update],				Service,	[Config]				ex: {ack, info, Service}
+%
+% info, 	[config|service|state],				Service,	[Config|State|Tuple]	ex: {info, service, Service}
+%																						{info, state, Service, State}
+%																						{info, config, Service, Config}																						
+%
+% update 	[config|new|drop|state|service], 	Service,	[Config|up|down] 		ex: {update, state, Server, up}
+%																						{update, state, Server, down}
+%																						{update, config, Service, Config}
+a_message( To, From, Ref, Msg ) ->
+	a_message( To, From, Ref, Msg, [] ).
+
+a_message( To, From, Ref, Msg, Options ) ->
+	gen_server:cast( To, {message, From, Ref, Msg, Options } ).
+
+
 
 %% init/1
 %% ====================================================================
@@ -137,10 +156,10 @@ handle_call( {get, monitor, all}, From, #state{ monitor_map = Map, query_queue =
 
     { noreply, State#state{ query_queue = [{Ref, From, Pid}|Q] } };
 
-handle_call( {get, queue, size}, _From, #state{query_queue = Q} = State ) ->
+handle_call( {get, queue, size}, _From, #state{ query_queue = Q} = State ) ->
 	{reply, {ok, erlang:length( Q ) }, State};
 
-handle_call( {get, queue, list}, _From, #state{query_queue = Q} = State ) ->
+handle_call( {get, queue, list}, _From, #state{ query_queue = Q} = State ) ->
 	{reply, {ok, Q}, State};
 
 handle_call( {stop, Reason}, _From, State) ->
@@ -162,6 +181,14 @@ handle_call(Request, From, State) ->
 	NewState :: term(),
 	Timeout :: non_neg_integer() | infinity.
 %% ====================================================================
+handle_cast( {message, Ref, From, Msg, Options }, State ) ->
+	{noreply, State};
+
+
+handle_cast( {reply, Ref, From, Msg, Options }, State ) ->
+	{noreply, State};
+
+
 handle_cast(Msg, State) ->
     {noreply, State}.
 
