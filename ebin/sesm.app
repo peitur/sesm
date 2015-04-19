@@ -8,6 +8,7 @@
 	sesm_service,
 	sesm_app,
 	sesm_util,
+	sesm_net,
 	sesm_monitor,
 	sesm_monitor_sup
 	]},

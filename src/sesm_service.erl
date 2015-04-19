@@ -10,6 +10,7 @@
 -export( [get_processes/0, get_processes/1, get_processes/2] ).
 -export( [monitor_query/5] ).
 -export( [get_monitor_list/0, get_monitor_list/1, get_qqueue_list/0, get_qqueue_list/1, get_qqueue_size/0, get_qqueue_size/1] ).
+-export( [ping/1] ).
 
 -include("../include/sesm.hrl").
 
@@ -94,6 +95,14 @@ get_qqueue_size( Node ) ->
 % update 	[config|new|drop|state|service], 	Service,	[Config|up|down] 		ex: {update, state, Server, up}
 %																						{update, state, Server, down}
 %																						{update, config, Service, Config}
+ping( To ) ->
+	try gen_server:call( {?MODULE, To}, {ping} ) of
+		{ok, pong} -> pong;
+		Other -> Other
+	catch 
+		Error:Reason -> pang
+	end.
+
 a_message( To, From, Ref, Msg ) ->
 	a_message( To, From, Ref, Msg, [] ).
 
@@ -164,6 +173,9 @@ handle_call( {get, queue, list}, _From, #state{ query_queue = Q} = State ) ->
 
 handle_call( {stop, Reason}, _From, State) ->
     {stop, Reason, ok, State};
+
+handle_call( {ping}, _From, State ) ->
+	{reply, {ok, pong}, State};
 
 handle_call(Request, From, State) ->
     Reply = undefined,
