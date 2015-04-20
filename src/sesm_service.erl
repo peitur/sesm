@@ -10,7 +10,7 @@
 -export( [get_processes/0, get_processes/1, get_processes/2] ).
 -export( [monitor_query/5] ).
 -export( [get_monitor_list/0, get_monitor_list/1, get_qqueue_list/0, get_qqueue_list/1, get_qqueue_size/0, get_qqueue_size/1] ).
--export( [ping/1, get_nodelist/0, get_nodelist/1, scan_nodelist/0, scan_nodelist/1] ).
+-export( [ping/1, add_node/1, get_nodelist/0, get_nodelist/1, scan_nodelist/0, scan_nodelist/1] ).
 -export( [scanner_timer/2]).
 
 -include("../include/sesm.hrl").
@@ -103,6 +103,9 @@ scan_nodelist( manual ) ->
 scan_nodelist( Other ) ->
 	{eror, badarg}.
 
+add_node( Node ) ->
+	gen_server:call( ?MODULE, {add, node, Node} ).
+
 % request, 	[takeover|info|update], 			Service,	[Config,Tuple]			ex: {request, info, Service}
 %																						{request, takeover, Service, [{value, N}]}
 %
@@ -186,6 +189,23 @@ init( Options ) ->
 	Timeout :: non_neg_integer() | infinity,
 	Reason :: term().
 %% ====================================================================
+handle_call( {add, node, Node}, _From, State ) ->
+
+	try net_adm:ping( Node ) of
+		pong ->
+
+			case lists:member( Node, State#state.expected_quorum ) of
+				true -> {reply, { error, exists }, State };
+				false ->
+					ExpectedQ = [Node | State#state.expected_quorum], 
+					{reply, { ok, erlang:length( ExpectedQ ) }, State#state{ expected_quorum = ExpectedQ } }
+			end;
+		pang -> {reply, { error, nosuchnode }, State }
+	catch 
+		Error:Reason -> {reply, { error, Reason }, State }
+	end;
+
+
 handle_call( {get, monitor, all}, From, #state{ monitor_map = Map, query_queue = Q } = State ) ->
 
 	Ref = erlang:make_ref(),
