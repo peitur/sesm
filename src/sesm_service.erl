@@ -10,14 +10,15 @@
 -export( [get_processes/0, get_processes/1, get_processes/2] ).
 -export( [monitor_query/5] ).
 -export( [get_monitor_list/0, get_monitor_list/1, get_qqueue_list/0, get_qqueue_list/1, get_qqueue_size/0, get_qqueue_size/1] ).
--export( [ping/1] ).
+-export( [ping/1, get_nodelist/0, get_nodelist/1, scan_nodelist/0, scan_nodelist/1] ).
+-export( [scanner_timer/2]).
 
 -include("../include/sesm.hrl").
 
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
--record(state, { monitor_map, service_config, query_queue = [], timeout, quorum = [] }).
+-record(state, { scanner_pid, scanner_timeout, monitor_map, service_config, query_queue = [], timeout, quorum = [], expected_quorum = [] }).
 
 start_link() ->
 	start_link( [] ).
@@ -83,6 +84,25 @@ get_qqueue_size() ->
 get_qqueue_size( Node ) ->
 	gen_server:call( Node, {get, queue, size } ).
 
+
+get_nodelist( ) ->
+	get_nodelist( ?MODULE ).
+
+get_nodelist( Node ) ->
+	gen_server:call( Node , {get, nodelist} ).
+
+scan_nodelist( ) ->
+	scan_nodelist( manual ).
+
+scan_nodelist( auto ) ->
+	gen_server:cast( ?MODULE, {scan, nodelist, auto});
+
+scan_nodelist( manual ) ->
+	gen_server:cast( ?MODULE, {scan, nodelist, manual});
+
+scan_nodelist( Other ) ->
+	{eror, badarg}.
+
 % request, 	[takeover|info|update], 			Service,	[Config,Tuple]			ex: {request, info, Service}
 %																						{request, takeover, Service, [{value, N}]}
 %
@@ -100,7 +120,7 @@ ping( To ) ->
 		{ok, pong} -> pong;
 		Other -> Other
 	catch 
-		Error:Reason -> pang
+		_Error:_Reason -> pang
 	end.
 
 a_message( To, From, Ref, Msg ) ->
@@ -126,10 +146,10 @@ a_message( To, From, Ref, Msg, Options ) ->
 init( Options ) ->
 	erlang:process_flag( trap_exit, true ),
 
-	Quorum = case proplists:get_value( quorum, application:get_all_env( sesm ), undefined ) of
-		undefined -> [];
+	{ExpectedQ, Quorum} = case proplists:get_value( quorum, application:get_all_env( sesm ), undefined ) of
+		undefined -> { [], [] };
 		[{ Proc, NodeList }] ->
-			lists:map( fun( Node ) -> {Proc, Node } end, NodeList )
+			{ NodeList, x_scan_nodelist( ?MODULE, NodeList ) }
 	end,
 
 	case  proplists:get_value( service, application:get_all_env( sesm ), undefined ) of
@@ -137,7 +157,16 @@ init( Options ) ->
 			error_logger:error_msg("[~p] ERROR: Missing Service Config (undefined)", [ ?MODULE ]),
 			{stop, missing_config};
 		Config ->
-			{ok, #state{ service_config = Config, query_queue = [], quorum = Quorum }, ?MON_STARTIME }
+
+			Timeout = proplists:get_value( timeout, application:get_all_env( sesm ), ?MON_TIMEOUT ),
+			{ok, #state{ 
+					scanner_pid = spawn_link( ?MODULE, scanner_timer, [self(), Timeout] ),
+					scanner_timeout = Timeout,
+					service_config = Config, 
+					query_queue = [], 
+					quorum = Quorum, 
+					expected_quorum = ExpectedQ 
+				}, ?MON_STARTIME }
 	end.
 
 %% handle_call/3
@@ -171,6 +200,10 @@ handle_call( {get, queue, size}, _From, #state{ query_queue = Q} = State ) ->
 handle_call( {get, queue, list}, _From, #state{ query_queue = Q} = State ) ->
 	{reply, {ok, Q}, State};
 
+handle_call( {get, nodelist}, _From, State ) ->
+	{reply, {ok, State#state.quorum, erlang:nodes()}, State};
+
+
 handle_call( {stop, Reason}, _From, State) ->
     {stop, Reason, ok, State};
 
@@ -196,6 +229,15 @@ handle_call(Request, From, State) ->
 handle_cast( {message, Ref, From, Msg, Options }, State ) ->
 	{noreply, State};
 
+handle_cast( {scan, nodelist, manual}, #state{ service_config = Config } = State ) ->
+	error_logger:info_msg("[~p] INFO: Manual Scanning for new nodes ~p ~n", [?MODULE, erlang:length( State#state.expected_quorum )]),
+	Quorum =  lists:map( fun( Node ) -> { ?MODULE, Node } end, sesm_net:detect_nodes( State#state.expected_quorum) ),
+	{noreply, State#state{ quorum = Quorum} };
+
+handle_cast( {scan, nodelist, auto}, #state{ service_config = Config } = State ) ->
+	Quorum =  lists:map( fun( Node ) -> { ?MODULE, Node } end, sesm_net:detect_nodes( State#state.expected_quorum) ),
+	{noreply, State#state{ quorum = Quorum} };
+
 
 handle_cast( {reply, Ref, From, Msg, Options }, State ) ->
 	{noreply, State};
@@ -216,7 +258,9 @@ handle_cast(Msg, State) ->
 	NewState :: term(),
 	Timeout :: non_neg_integer() | infinity.
 %% ====================================================================
-handle_info( timeout, #state{ service_config = Config } = State ) ->
+handle_info( timeout, #state{ service_config = Config  } = State ) ->
+
+	Quorum = x_scan_nodelist( ?MODULE, State#state.expected_quorum ),
 
 	case x_monitor_init( Config ) of
 		{ok, ignore} ->
@@ -224,11 +268,14 @@ handle_info( timeout, #state{ service_config = Config } = State ) ->
 		{error, Reason} -> 
 			{stop, Reason, State};
 		InitMap -> 	
-			{noreply, State#state{ monitor_map = InitMap } }
+			{noreply, State#state{ monitor_map = InitMap, quorum = Quorum }}
 	end;	
 
 
-
+handle_info( {'EXIT', Pid, Reason}, #state{ scanner_pid = Pid, scanner_timeout = Timeout } = State ) ->
+% register monitor pid changes in map
+	error_logger:info_msg("[~p] INFO: Lost 'EXIT' scanner timer ~p : ~p ~n", [?MODULE, Pid, Reason] ),
+	{noreply, State#state{  scanner_pid = spawn_link( ?MODULE, scanner_timer, [self(), Timeout] )  } };
 
 handle_info( {'EXIT', Pid, Reason}, #state{ monitor_map = Map } = State ) ->
 % register monitor pid changes in map
@@ -289,7 +336,8 @@ code_change(OldVsn, State, Extra) ->
 
 
 
-
+x_scan_nodelist( Proc, NodeList ) ->
+	lists:map( fun( Node ) -> {Proc, Node } end, sesm_net:detect_nodes( NodeList ) ).
 
 
 x_check_monitor( SysProc, SysName ) ->
@@ -367,6 +415,16 @@ monitor_query( _Type, Ref, ReplyTo, _BroadcastList, _Options ) ->
 
 
 
+scanner_timer( ParentPid, Timeout ) ->
+	receive
+		{timeout, NewTimeout} ->
+			scanner_timer( ParentPid, NewTimeout );
+		Other ->
+			scanner_timer( ParentPid, Timeout )			
+		after Timeout ->
+			?MODULE:scan_nodelist( auto ),
+			scanner_timer( ParentPid, Timeout )
+	end.
 
  % {undef,
  % 	[{sesm_service,x_monitor_query,
