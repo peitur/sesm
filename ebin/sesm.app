@@ -10,7 +10,9 @@
 	sesm_util,
 	sesm_net,
 	sesm_monitor,
-	sesm_monitor_sup
+	sesm_monitor_sup,
+	sesm_service_net,
+	sesm_service_net_sup
 	]},
   {registered, []},
   {applications, [kernel, stdlib]},

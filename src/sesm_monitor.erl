@@ -55,7 +55,7 @@ get_config( Pid ) -> gen_server:call(Pid, {get, config} ).
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
--record(state, { parent, name, title, pid = undefined, ppid = undefined, expected = running, current, start_time, conf, timeout, timerpid = undefined } ).
+-record(state, { parent, name, title, pid = undefined, ppid = undefined, expected = running, current, start_time, conf, timeout, timerpid = undefined, netpid = undefined } ).
 
 
 
@@ -86,6 +86,7 @@ init([ ParentPid, Conf, _Options ]) ->
 			Timeout = proplists:get_value( timeout, Conf, ?MON_TIMEOUT ),
 			TimerPid = spawn_link( ?MODULE, monitor_timer, [self(), Timeout] ),
 
+			
 
 		    {ok, #state{ parent = ParentPid, conf = Conf, start_time = StartTime, name = Name, title = Title, expected = ExpState, current = down, timeout = Timeout, timerpid = TimerPid }, 0 }
 	end.
@@ -210,18 +211,29 @@ handle_info( timeout, #state{ name = Name, pid = Pid  } = State ) ->
 	end;
 
 
+%% Lost the netork handler process
+handle_info( {'EXIT', Pid, Reason}, #state{ name = Name, netpid = Pid } = State ) ->
+	error_logger:info_msg("[~p] INFO: Lost 'EXIT' pid ~p for network handle on ~p : ~p ~n", [?MODULE, Pid, Name, Reason] ),
+	{noreply, State#state{ current = down } };
+
+
+%% Lost the timer process
 handle_info( {'EXIT', Pid, Reason}, #state{ name = Name, timerpid = Pid } = State ) ->
 	error_logger:info_msg("[~p] INFO: Lost 'EXIT' timer for monitor ~p : ~p ~n", [?MODULE, Name, Reason] ),
 	TimerPid = spawn_link( ?MODULE, monitor_timer, [self(), State#state.timeout ] ),
 	{noreply, State#state{ timerpid = TimerPid} };
 
-
+%% Lost a child, any preference
 handle_info( {'EXIT', Pid, Reason}, #state{ name = Name } = State ) ->
 	error_logger:info_msg("[~p] INFO: Lost 'EXIT' child for monitor ~p ~p: ~p ~n", [?MODULE, Name, Pid, Reason] ),
 	{noreply, State };
 
 
 
+
+handle_info( {'DOWN', MonitorReference, Process, Pid, Reason}, #state{ name = Name, netpid = Pid } = State ) ->
+	error_logger:info_msg("[~p] INFO: Lost 'DOWN' pid ~p for monitor ~p ref:~p proc: ~p pid: ~p reason: ~p ~n", [?MODULE, Pid, Name, MonitorReference, Process, Pid, Reason] ),
+	{noreply, State#state{ current = down } };
 
 handle_info( {'DOWN', MonitorReference, Process, Pid, Reason}, #state{ name = Name, timerpid = Pid } = State ) ->
 	error_logger:info_msg("[~p] INFO: Lost 'DOWN' timer for monitor ~p ref:~p proc: ~p pid: ~p reason: ~p ~n", [?MODULE, Name, MonitorReference, Process, Pid, Reason] ),
