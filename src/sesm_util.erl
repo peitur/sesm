@@ -6,7 +6,7 @@
 -export( [filter_parent/2, filter_name/2, filter_alias/2, filter_by/3] ).
 -export( [get_procstat/1, is_same/2] ).
 
-
+-export( [pfmap/2, pfmap/3, pfmap_insert/3] ).
 
 
 
@@ -185,3 +185,86 @@ proc_list( [File|List], Ret ) ->
 			error_list:warning_msg( "[~p] WARN File list item ~p : ~p ~n", [?MODULE, File, Reason] )
 	end.
 	
+
+%% paralell limited map
+%% - aggregator: handles reples from all paralell workers
+%% - executor: runs the function to use
+%% 
+
+% -spec( Fun, List )
+pfmap( Fun, List ) ->
+	pfmap( Fun, List, ?PFMAP_NPROC ).
+
+pfmap( Fun, List, Options ) ->
+	N =	case proplists:get_value( num_processes, Options, ?PFMAP_NPROC ) of
+		N when erlang:is_list( N ) -> list_to_integer( N );
+		N -> N
+	end,
+
+	pfmap_proc( self(), Fun, List, N ),
+	receive
+		Data -> Data
+	end.
+	
+
+
+pfmap_proc( ShellPid, Fun, List, NumWorkers ) ->
+	%% Initialize a reply list set to undef values
+	io:format( "Processing list of ~p items~n", [erlang:length(List)] ),
+
+	ReplyList = lists:map( fun(_) -> undefined end, List ),
+	AggPid = spawn( fun() -> pfmap_aggfunc( ShellPid, NumWorkers, erlang:length( List ),  ReplyList ) end ),
+	ExecPid = spawn( fun() -> pfmap_exec( AggPid, Fun, List, NumWorkers, 0, 0 ) end ).
+
+
+% if expected number matches the number of received replies, we are done
+pfmap_aggfunc( ShellPid, ExpectedNumber, ExpectedNumber, ReplyList ) ->
+	ShellPid ! lists:reverse( ReplyList ), ok;
+
+%% 
+pfmap_aggfunc( ShellPid, NumWorkersDone, ExpectedNumber, ReplyList ) ->
+	receive
+		{error, Reason} -> {error, Reason};
+		{done, Num} -> ShellPid ! ReplyList;
+		{Num, Data} -> 
+			pfmap_aggfunc( ShellPid, NumWorkersDone + 1, ExpectedNumber, pfmap_insert( ReplyList, Data, Num ) )		
+	end.
+
+
+%% Spawn process to exceute function for an element
+pfmap_exec( AggPid, _, [], _, _, Index ) -> AggPid ! {done, Index};
+
+pfmap_exec( AggPid, Fun, List, NumWorkers, NumWorkers, Index ) ->
+	receive
+		{Num, Data} -> 
+			AggPid ! {Index, Data},
+			pfmap_exec( AggPid, Fun, List, NumWorkers, NumWorkers - 1, Index )
+	end;
+
+pfmap_exec( AggPid, Fun, [Item|List], NumWorkers, CurrentNumWorkers, Index ) ->
+	spawn( fun() -> pfmap_xfun( AggPid, Fun, Item, Index ) end ),
+	pfmap_exec( AggPid, Fun, List, NumWorkers, CurrentNumWorkers + 1, Index + 1 ).
+
+pfmap_xfun( AggPid, Fun, Item, Index ) ->
+	try Fun( Item ) of
+		Data -> AggPid ! {Index, Data}
+	catch 
+		Error:Reason -> AggPid ! {Index, {error, Reason}}
+	end.
+
+%% Insert function to insert data in specified index
+pfmap_insert( List, Item, Index ) ->
+	pfmap_insert( List, Item, Index, 1, [] ).
+
+pfmap_insert( [], _, _, _, Ret ) ->
+	lists:reverse( Ret );
+
+pfmap_insert( [H|T], Item, Index, Index, Ret ) ->
+	pfmap_insert( T, Item, Index, Index + 1, [Item|Ret] );
+
+pfmap_insert( [H|T], Item, Index, I, Ret ) ->
+	pfmap_insert( T, Item, Index, I + 1, [H|Ret] ).
+
+
+
+

@@ -10,3 +10,6 @@
 -define( MON_TIMEOUT, 10 * 1000 ). 
 -define( MON_STATE , down ).
 -define( MON_STARTIME, 1000 ).
+
+
+-define( PFMAP_NPROC, 5 ).

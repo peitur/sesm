@@ -2,6 +2,8 @@
 -behaviour(gen_server).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
+-export([start_link/3, start_service_listner/3, stop/1, stop/2]).
+
 %% ====================================================================
 %% API functions
 %% ====================================================================
@@ -9,6 +11,9 @@
 
 start_link( Parent, Type, Options ) ->
 	gen_server:start_link( {local, ?MODULE}, ?MODULE, [Parent, Type, Options] ).
+
+start_service_listner( Parent, Type, Options ) ->
+	sesm_service_net_sup:start_service_net( Parent, Type, Options ).
 
 stop( Pid ) ->
 	stop( Pid, normal ).
@@ -94,19 +99,28 @@ handle_cast(Msg, State) ->
 	NewState :: term(),
 	Timeout :: non_neg_integer() | infinity.
 %% ====================================================================
+handle_info( {tcp, Socket, Message}, State ) ->
+	
+	{noreply, State};
+
 handle_info( timeout, #state{ type = remote, handle = undefined} = State ) ->
 	{noreply, State};
 
 handle_info( timeout, #state{ type = local, handle = undefined} = State ) ->
 	case proplists:get_value( port, State#state.options, undefined ) of
-		undefined -> {noreply, State};
+		undefined -> {stop, {error, missingport} };
 		Port ->
-			case Handle = gen_tcp:listen( Port, [binary] ) of
+			case gen_tcp:listen( Port, [binary] ) of
 				{error, Reason} -> 
 					error_logger:error_msg( "[~p] ERROR: Opening listner port ~p : ~p ~n", [?MODULE, Port, Reason] ),
-					{error, Reason};
-				{ok, Handle} ->
-					{noreply, State#state{ handle = Handle } }
+					{stop, {error, Reason}};
+				{ok, Listner} ->
+					case gen_tcp:accept( Listner, infinity ) of
+						{error, Reason} -> {stop, {error, Reason}};
+						{ok, Socket} -> 
+
+							{noreply, State#state{ handle = Socket }, 0 }
+					end						
 			end
 	end;
 	
@@ -144,3 +158,10 @@ code_change(OldVsn, State, Extra) ->
 %% Internal functions
 %% ====================================================================
 
+
+x_health_status( Pid ) ->
+	try sesm_monitor:get_status( Pid ) of
+		{ok, ServiceStatus } -> ServiceStatus
+	catch 
+		Error:Reason -> {error, Reason}
+	end.

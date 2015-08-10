@@ -10,8 +10,8 @@
 %% API functions
 %% ====================================================================
 -export([start_link/3, start_monitor/3, stop/1, stop/2]).
--export([get_pid/1, get_ppid/1, get_current/1, get_expected/1, get_starttime/1]).
--export([ validate/1, validate/2]).
+-export([get_pid/1, get_ppid/1, get_current/1, get_expected/1, get_starttime/1, get_status/1]).
+-export([validate/1, validate/2]).
 -export([monitor_timer/2]).
 
 % application:start( sasl ).
@@ -47,6 +47,8 @@ get_ppid( Pid ) -> gen_server:call(Pid, {get, ppid} ).
 get_expected( Pid ) -> gen_server:call(Pid, {get, expected} ).
 get_current( Pid ) -> gen_server:call(Pid, {get, current} ).
 get_starttime( Pid ) -> gen_server:call(Pid, {get, starttime} ).
+
+get_status( Pid ) -> gen_server:call( Pid, {get, all} ).
 
 get_config( Pid ) -> gen_server:call(Pid, {get, config} ).
 
@@ -109,6 +111,7 @@ init([ ParentPid, Conf, _Options ]) ->
 	Reason :: term().
 %% ====================================================================
 
+
 handle_call( {get, config}, _From, State ) ->
 	{ reply, {ok, State#state.conf }, State };
 
@@ -133,7 +136,18 @@ handle_call( {get, current}, _From, State ) ->
 handle_call( {get, starttime}, _From, State ) ->
 	{ reply, {ok, State#state.start_time }, State };
 
+handle_call( {get, all}, _From, State ) ->
+	Sts = {
+		{name, State#state.name },
+		{title, State#state.title },
+		{pid, State#state.pid },
+		{ppid, State#state.ppid },
+		{expected, State#state.expected },
+		{current, State#state.current },
+		{starttime, State#state.start_time }
+	},
 
+	{reply, {ok, Sts}, State };
 
 handle_call( {stop, Reason}, _From, State ) ->
 	{ stop, Reason, ok, State };
@@ -317,3 +331,4 @@ monitor_timer( ParentPid, Timeout ) ->
 			sesm_monitor:validate( ParentPid ),
 			monitor_timer( ParentPid, Timeout )
 	end.
+
